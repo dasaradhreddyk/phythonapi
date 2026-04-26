@@ -1,0 +1,70 @@
+$(function () {
+  function fetchDataAndRender() {
+    $.getJSON('/api/values')
+      .done(function (data) {
+        // Expect data: [{ time: "2026-04-23T10:00:00Z", count: 5 }, ...]
+        var points = data.map(function (d) {
+          return { x: d.time, y: d.count };
+        });
+
+        var ctx = document.getElementById('timeCountChart').getContext('2d');
+
+        // Destroy existing chart instance if re-using the page
+        if (window._timeCountChart) {
+          window._timeCountChart.destroy();
+        }
+
+        window._timeCountChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            datasets: [{
+              label: 'Count',
+              data: points,
+              borderColor: 'rgba(75,192,192,1)',
+              backgroundColor: 'rgba(75,192,192,0.1)',
+              pointRadius: 3,
+              fill: false,
+              lineTension: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            scales: {
+              xAxes: [{
+                type: 'time',
+                time: {
+                  tooltipFormat: 'YYYY-MM-DD HH:mm',
+                  displayFormats: {
+                    second: 'HH:mm:ss',
+                    minute: 'HH:mm',
+                    hour: 'MMM D HH:mm',
+                    day: 'MMM D'
+                  }
+                },
+                scaleLabel: {
+                  display: true,
+                  labelString: 'Time'
+                }
+              }],
+              yAxes: [{
+                ticks: { beginAtZero: true },
+                scaleLabel: {
+                  display: true,
+                  labelString: 'Count'
+                }
+              }]
+            }
+          }
+        });
+      })
+      .fail(function (jqxhr, textStatus, error) {
+        console.error('Failed to load data from API:', textStatus, error);
+      });
+  }
+
+  // initial load
+  fetchDataAndRender();
+
+  // optional: refresh every N seconds (uncomment to enable)
+  // setInterval(fetchDataAndRender, 30 * 1000);
+});
