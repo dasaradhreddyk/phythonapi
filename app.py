@@ -7,6 +7,7 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 from datetime import datetime, timedelta, timezone
 from flask_cors import CORS, cross_origin
+from collections import Counter
 import webbrowser
 import os
 import requests
@@ -43,32 +44,30 @@ def get_count():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/', methods=['GET'])
-@app.route('/api/top_10', methods=['GET'])
 def get_top_10():
     try:
+        start_time = datetime.now(timezone.utc)
+        print("top_10 start time :", start_time)
         result = collection.find(
         {},                      # no filter (all documents)
-        {"_id": 1, "likes": 1,"fileName": 1}   # project only _id and likes
+        {"_id": 1, "likes": 1}   # project only _id and likes
         ).sort("likes", -1).limit(10)
 
         id_list = []
         likes_list = []
-        file_list = []
     
         for doc in result:
-            doc_id = str(doc.get('_id', ''))
-            likes = doc.get('likes', 0)
-            file_name = doc.get('fileName', doc_id)  # fallback to doc_id if fileName is missing
-
-            id_list.append(doc_id)
-            likes_list.append(likes)
-            file_list.append(file_name)
-
-            print("decending order list :", doc_id, likes)
+            doc['_id'] = str(doc['_id'])
+            id_list.append(doc['_id'])
+            likes_list.append(doc['likes'])            
+            print("decending order list :",doc['_id'], doc['likes'])
             
-        data = [{"id": t, "likes": c, "fileName": f} for t, c, f in zip(id_list, likes_list, file_list)]
+        data = [{"id": t, "likes": c} for t, c in zip(id_list, likes_list)]
+        print("top_10 end time :", datetime.now(timezone.utc))
+        
+        print("top_10 time :", datetime.now(timezone.utc) - start_time)
 
-        return jsonify(data), 200
+        return jsonify(data), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -85,6 +84,9 @@ def get_recent_count():
 
         end = datetime.now(timezone.utc)
         start_time = end;
+
+        print("count_type :",count_type)
+
         print("recent start time :",start_time)
 
         # ------------------ HOUR BASED ------------------
@@ -127,23 +129,29 @@ def get_recent_count():
 
         # ------------------ DAY BASED ------------------
         elif count_type == 'day':
-            for i in range(7):  # last 7 days (you can change)
-                start = end - timedelta(days=1)
+            # 1. Calculate the full range
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=7)
 
-                query = {
-                    "_id": {
-                        "$gte": ObjectId.from_datetime(start),
-                        "$lt": ObjectId.from_datetime(end)
-                    }
-                }
+            # 2. Single query: Get only the _id field for everything in the last 7 days
+            # This is much faster than fetching full documents
+            cursor = collection.find(
+                {"_id": {"$gte": ObjectId.from_datetime(start_date), "$lt": ObjectId.from_datetime(end_date)}},
+                {"_id": 1} 
+            )
 
-                count = collection.count_documents(query)
+            # 3. Extract dates from ObjectIds and count them in Python
+            # ObjectId.generation_time gives us the timestamp without an extra DB field
+            day_counts = Counter(doc["_id"].generation_time.strftime("%Y-%m-%d") for doc in cursor)
 
-                time_labels.append(start.strftime("%Y-%m-%d"))
-                num_access.append(count)
+            # 4. Format for your lists (ensures 0s for missing days)
+            time_labels = []
+            num_access = []
 
-                end = start
-
+            for i in range(7):
+                day_str = (start_date + timedelta(days=i)).strftime("%Y-%m-%d")
+                time_labels.append(day_str)
+                num_access.append(day_counts.get(day_str, 0))
         else:
             return jsonify({"error": "Invalid type. Use 'hour' or 'day'"}), 400
 
@@ -158,6 +166,7 @@ def get_recent_count():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 @app.route('/document/<id>', methods=['GET'])
 def get_document(id):
     try:
@@ -190,3 +199,4 @@ if __name__ == '__main__':
     
 
     
+
