@@ -84,25 +84,46 @@ def get_recent_count():
         time_labels = []
 
         end = datetime.now(timezone.utc)
+        start_time = end;
+        print("recent start time :",start_time)
 
         # ------------------ HOUR BASED ------------------
         if count_type == 'hour':
-            for i in range(24):
-                start = end - timedelta(hours=1)
-
-                query = {
+            total_start = end - timedelta(hours=24)
+    
+            # 2. Single query to get all IDs in that range (ordered)
+            # We only fetch the '_id' field to keep the payload small
+            cursor = collection.find(
+                {
                     "_id": {
-                        "$gte": ObjectId.from_datetime(start),
+                        "$gte": ObjectId.from_datetime(total_start),
                         "$lt": ObjectId.from_datetime(end)
                     }
-                }
+                },
+                {"_id": 1}
+            ).sort("_id", 1)
 
-                count = collection.count_documents(query)
-
-                time_labels.append(start.strftime("%H:%M"))
+            # 3. Pre-calculate your hour boundaries
+            # We create a list of timestamps representing each hour mark
+            boundaries = [total_start + timedelta(hours=i) for i in range(25)]
+            
+            # 4. Efficiently bin the results in Python
+            # This avoids 24 separate network calls
+            id_list = [doc['_id'].generation_time for doc in cursor]
+            
+            for i in range(24):
+                b_start = boundaries[i]
+                b_end = boundaries[i+1]
+                
+                # Count how many timestamps fall within this specific hour
+                count = sum(1 for t in id_list if b_start <= t < b_end)
+                
+                time_labels.append(b_start.strftime("%H:%M"))
                 num_access.append(count)
 
-                end = start  # move window backward
+            data = [{"time": t, "count": c} for t, c in zip(time_labels, num_access)]
+
+
 
         # ------------------ DAY BASED ------------------
         elif count_type == 'day':
@@ -129,11 +150,14 @@ def get_recent_count():
         # ------------------ FINAL RESPONSE ------------------
         data = [{"time": t, "count": c} for t, c in zip(time_labels, num_access)]
 
+        print("recent end time :", datetime.now(timezone.utc))
+        
+        print("recent time :", datetime.now(timezone.utc) - start_time)
+
         return jsonify({"data": data}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 @app.route('/document/<id>', methods=['GET'])
 def get_document(id):
     try:
