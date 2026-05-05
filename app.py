@@ -7,7 +7,6 @@ from pymongo import MongoClient
 from bson.objectid import ObjectId
 from datetime import datetime, timedelta, timezone
 from flask_cors import CORS, cross_origin
-from collections import Counter
 import webbrowser
 import os
 import requests
@@ -44,30 +43,32 @@ def get_count():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/', methods=['GET'])
+@app.route('/api/top_10', methods=['GET'])
 def get_top_10():
     try:
-        start_time = datetime.now(timezone.utc)
-        print("top_10 start time :", start_time)
         result = collection.find(
         {},                      # no filter (all documents)
-        {"_id": 1, "likes": 1}   # project only _id and likes
+        {"_id": 1, "likes": 1,"fileName": 1}   # project only _id and likes
         ).sort("likes", -1).limit(10)
 
         id_list = []
         likes_list = []
+        file_list = []
     
         for doc in result:
-            doc['_id'] = str(doc['_id'])
-            id_list.append(doc['_id'])
-            likes_list.append(doc['likes'])            
-            print("decending order list :",doc['_id'], doc['likes'])
-            
-        data = [{"id": t, "likes": c} for t, c in zip(id_list, likes_list)]
-        print("top_10 end time :", datetime.now(timezone.utc))
-        
-        print("top_10 time :", datetime.now(timezone.utc) - start_time)
+            doc_id = str(doc.get('_id', ''))
+            likes = doc.get('likes', 0)
+            file_name = doc.get('fileName', doc_id)  # fallback to doc_id if fileName is missing
 
-        return jsonify(data), 500
+            id_list.append(doc_id)
+            likes_list.append(likes)
+            file_list.append(file_name)
+
+            print("decending order list :", doc_id, likes)
+            
+        data = [{"id": t, "likes": c, "fileName": f} for t, c, f in zip(id_list, likes_list, file_list)]
+
+        return jsonify(data), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -166,7 +167,6 @@ def get_recent_count():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 @app.route('/document/<id>', methods=['GET'])
 def get_document(id):
     try:
@@ -199,4 +199,3 @@ if __name__ == '__main__':
     
 
     
-
