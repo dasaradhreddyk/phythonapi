@@ -85,9 +85,6 @@ def get_recent_count():
 
         end = datetime.now(timezone.utc)
         start_time = end;
-
-        print("count_type :",count_type)
-
         print("recent start time :",start_time)
 
         # ------------------ HOUR BASED ------------------
@@ -130,29 +127,23 @@ def get_recent_count():
 
         # ------------------ DAY BASED ------------------
         elif count_type == 'day':
-            # 1. Calculate the full range
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=7)
+            for i in range(7):  # last 7 days (you can change)
+                start = end - timedelta(days=1)
 
-            # 2. Single query: Get only the _id field for everything in the last 7 days
-            # This is much faster than fetching full documents
-            cursor = collection.find(
-                {"_id": {"$gte": ObjectId.from_datetime(start_date), "$lt": ObjectId.from_datetime(end_date)}},
-                {"_id": 1} 
-            )
+                query = {
+                    "_id": {
+                        "$gte": ObjectId.from_datetime(start),
+                        "$lt": ObjectId.from_datetime(end)
+                    }
+                }
 
-            # 3. Extract dates from ObjectIds and count them in Python
-            # ObjectId.generation_time gives us the timestamp without an extra DB field
-            day_counts = Counter(doc["_id"].generation_time.strftime("%Y-%m-%d") for doc in cursor)
+                count = collection.count_documents(query)
 
-            # 4. Format for your lists (ensures 0s for missing days)
-            time_labels = []
-            num_access = []
+                time_labels.append(start.strftime("%Y-%m-%d"))
+                num_access.append(count)
 
-            for i in range(7):
-                day_str = (start_date + timedelta(days=i)).strftime("%Y-%m-%d")
-                time_labels.append(day_str)
-                num_access.append(day_counts.get(day_str, 0))
+                end = start
+
         else:
             return jsonify({"error": "Invalid type. Use 'hour' or 'day'"}), 400
 
