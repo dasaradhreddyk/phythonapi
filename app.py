@@ -37,7 +37,13 @@ def health_check():
 @app.route('/count', methods=['GET'])
 def get_count():
     try:
-        count = collection.count_documents({})
+        # Use the faster estimated count for an unfiltered collection query.
+        # If it is unavailable or not accurate enough, fallback to count_documents.
+        try:
+            count = collection.estimated_document_count()
+        except Exception:
+            count = collection.count_documents({})
+
         return jsonify({"total_documents": count}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -73,91 +79,80 @@ def get_top_10():
         return jsonify({"error": str(e)}), 500
 
 
+# POST /count/recent is not implemented yet
+# @app.route('/count/recent', methods=['POST'])
+# def post_sun_to_dbt():
+#     pass
+
 @app.route('/count/recent', methods=['GET'])
 def get_recent_count():
     try:
-        count_type = request.args.get('type')
-
-        #count_type = request.args.get('type', 'hour')  # default = hour
-
-        num_access = []
-        time_labels = []
+        count_type = request.args.get('type', 'day')
 
         end = datetime.now(timezone.utc)
-        start_time = end;
-        print("recent start time :",start_time)
 
-        # ------------------ HOUR BASED ------------------
         if count_type == 'hour':
-            total_start = end - timedelta(hours=24)
-    
-            # 2. Single query to get all IDs in that range (ordered)
-            # We only fetch the '_id' field to keep the payload small
-            cursor = collection.find(
-                {
-                    "_id": {
-                        "$gte": ObjectId.from_datetime(total_start),
-                        "$lt": ObjectId.from_datetime(end)
-                    }
-                },
-                {"_id": 1}
-            ).sort("_id", 1)
-
-            # 3. Pre-calculate your hour boundaries
-            # We create a list of timestamps representing each hour mark
-            boundaries = [total_start + timedelta(hours=i) for i in range(25)]
-            
-            # 4. Efficiently bin the results in Python
-            # This avoids 24 separate network calls
-            id_list = [doc['_id'].generation_time for doc in cursor]
-            
-            for i in range(24):
-                b_start = boundaries[i]
-                b_end = boundaries[i+1]
-                
-                # Count how many timestamps fall within this specific hour
-                count = sum(1 for t in id_list if b_start <= t < b_end)
-                
-                time_labels.append(b_start.strftime("%H:%M"))
-                num_access.append(count)
-
-            data = [{"time": t, "count": c} for t, c in zip(time_labels, num_access)]
-
-
-
-        # ------------------ DAY BASED ------------------
+            periods = 24
+            bucket_ms = 3600_000
+            label_format = "%H:%M"
+            delta = timedelta(hours=1)
         elif count_type == 'day':
-            for i in range(7):  # last 7 days (you can change)
-                start = end - timedelta(days=1)
-
-                query = {
-                    "_id": {
-                        "$gte": ObjectId.from_datetime(start),
-                        "$lt": ObjectId.from_datetime(end)
-                    }
-                }
-
-                count = collection.count_documents(query)
-
-                time_labels.append(start.strftime("%Y-%m-%d"))
-                num_access.append(count)
-
-                end = start
-
+            periods = 7
+            bucket_ms = 86_400_000
+            label_format = "%Y-%m-%d"
+            delta = timedelta(days=1)
         else:
             return jsonify({"error": "Invalid type. Use 'hour' or 'day'"}), 400
 
-        # ------------------ FINAL RESPONSE ------------------
-        data = [{"time": t, "count": c} for t, c in zip(time_labels, num_access)]
+        start = end - periods * delta
+        start_naive = start.replace(tzinfo=None)
+        end_naive = end.replace(tzinfo=None)
 
-        print("recent end time :", datetime.now(timezone.utc))
-        
-        print("recent time :", datetime.now(timezone.utc) - start_time)
+        pipeline = [
+            {
+                "$match": {
+                    "_id": {
+                        "$gte": ObjectId.from_datetime(start_naive),
+                        "$lt": ObjectId.from_datetime(end_naive)
+                    }
+                }
+            },
+            {
+                "$project": {
+                    "bucket": {
+                        "$floor": {
+                            "$divide": [
+                                {"$subtract": [{"$toDate": "$_id"}, start_naive]},
+                                bucket_ms
+                            ]
+                        }
+                    }
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$bucket",
+                    "count": {"$sum": 1}
+                }
+            },
+            {"$sort": {"_id": 1}}
+        ]
+
+        grouped_counts = {item["_id"]: item["count"] for item in collection.aggregate(pipeline)}
+
+        data = []
+        bucket_start = start
+        for bucket in range(periods):
+            label = bucket_start.strftime(label_format)
+            count = grouped_counts.get(bucket, 0)
+            data.append({"time": label, "count": count})
+            bucket_start += delta
 
         return jsonify({"data": data}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 @app.route('/document/<id>', methods=['GET'])
 def get_document(id):
     try:
