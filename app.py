@@ -83,19 +83,65 @@ def get_top_10():
 # @app.route('/count/recent', methods=['POST'])
 # def post_sun_to_dbt():
 #     pass
-
 @app.route('/count/recent', methods=['GET'])
 def get_recent_count():
     try:
-        count_type = request.args.get('type', 'day')
+        count_type = request.args.get('type')
+
+        #count_type = request.args.get('type', 'hour')  # default = hour
+
+        num_access = []
+        time_labels = []
 
         end = datetime.now(timezone.utc)
+        start_time = end;
+        print("recent start time :",start_time)
 
+        # ------------------ HOUR BASED ------------------
         if count_type == 'hour':
-            periods = 24
-            bucket_ms = 3600_000
-            label_format = "%H:%M"
-            delta = timedelta(hours=1)
+            
+            end = datetime.now(timezone.utc)
+            start = end - timedelta(hours=24)
+
+          
+         
+            print("recent start time :",start_time)
+
+            # ------------------ HOUR BASED ------------------
+            if count_type == 'hour':
+                
+                end = datetime.now(timezone.utc)    
+                start = end - timedelta(hours=24)
+
+                query = {
+                    "_id": {
+                        "$gte": ObjectId.from_datetime(start),
+                        "$lt": ObjectId.from_datetime(end)
+                    }
+                }
+                result = collection.find(query)
+
+                # Prepare last 24 hours slots
+                hours = []
+                counts = []
+                end = datetime.now(timezone.utc)   
+                
+                for i in range(24):
+                    start = end - timedelta(hours=i+1)
+                    access = 0
+                    collection.find()
+                    counts.append(access)
+                    hours.append(start.strftime("%H:00"))
+                    end =start
+
+        
+                data = [{"time": t, "count": c} for t, c in zip(hours, counts)]
+                print("data :", data)
+                
+                   
+
+
+        # ------------------ DAY BASED ------------------
         elif count_type == 'day':
             end = datetime.now(timezone.utc)
             start = end - timedelta(days=7)
@@ -151,54 +197,18 @@ def get_recent_count():
         else:
             return jsonify({"error": "Invalid type. Use 'hour' or 'day'"}), 400
 
-        start = end - periods * delta
-        start_naive = start.replace(tzinfo=None)
-        end_naive = end.replace(tzinfo=None)
+        # ------------------ FINAL RESPONSE ------------------
+        data = [{"time": t, "count": c} for t, c in zip(time_labels, num_access)]
 
-        pipeline = [
-            {
-                "$match": {
-                    "_id": {
-                        "$gte": ObjectId.from_datetime(start_naive),
-                        "$lt": ObjectId.from_datetime(end_naive)
-                    }
-                }
-            },
-            {
-                "$project": {
-                    "bucket": {
-                        "$floor": {
-                            "$divide": [
-                                {"$subtract": [{"$toDate": "$_id"}, start_naive]},
-                                bucket_ms
-                            ]
-                        }
-                    }
-                }
-            },
-            {
-                "$group": {
-                    "_id": "$bucket",
-                    "count": {"$sum": 1}
-                }
-            },
-            {"$sort": {"_id": 1}}
-        ]
-
-        grouped_counts = {item["_id"]: item["count"] for item in collection.aggregate(pipeline)}
-
-        data = []
-        bucket_start = start
-        for bucket in range(periods):
-            label = bucket_start.strftime(label_format)
-            count = grouped_counts.get(bucket, 0)
-            data.append({"time": label, "count": count})
-            bucket_start += delta
+        print("recent end time :", datetime.now(timezone.utc))
+        
+        print("recent time :", datetime.now(timezone.utc) - start_time)
 
         return jsonify({"data": data}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/document/<id>', methods=['GET'])
 def get_document(id):
