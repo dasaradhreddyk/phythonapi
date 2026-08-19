@@ -97,10 +97,57 @@ def get_recent_count():
             label_format = "%H:%M"
             delta = timedelta(hours=1)
         elif count_type == 'day':
-            periods = 7
-            bucket_ms = 86_400_000
-            label_format = "%Y-%m-%d"
-            delta = timedelta(days=1)
+            end = datetime.now(timezone.utc)
+            start = end - timedelta(days=7)
+
+            pipeline = [
+                {
+                    "$match": {
+                        "_id": {
+                            "$gte": ObjectId.from_datetime(start),
+                            "$lt": ObjectId.from_datetime(end)
+                        }
+                    }
+                },
+                {
+                    "$project": {
+                        "day": {
+                            "$dateTrunc": {
+                                "date": {"$toDate": "$_id"},
+                                "unit": "day"
+                            }
+                        }
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$day",
+                        "count": {"$sum": 1}
+                    }
+                },
+                {
+                    "$sort": {"_id": 1}
+                }
+            ]
+            results = list(collection.aggregate(pipeline))
+            
+            count_by_day = {
+                item["_id"].strftime("%Y-%m-%d"): item["count"]
+                for item in results
+            }
+        
+            time_labels = []
+            num_access = []
+        
+            current = start
+        
+            for _ in range(7):
+                day = current.strftime("%Y-%m-%d")
+        
+                time_labels.append(day)
+                num_access.append(count_by_day.get(day, 0))
+        
+                current += timedelta(days=1)
         else:
             return jsonify({"error": "Invalid type. Use 'hour' or 'day'"}), 400
 
