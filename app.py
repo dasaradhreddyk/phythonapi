@@ -83,7 +83,7 @@ def get_top_10():
 # @app.route('/count/recent', methods=['POST'])
 # def post_sun_to_dbt():
 #     pass
-app.route('/count/recent', methods=['GET'])
+@app.route('/count/recent', methods=['GET'])
 def get_recent_count():
     try:
         count_type = request.args.get('type')
@@ -95,7 +95,7 @@ def get_recent_count():
 
         end = datetime.now(timezone.utc)
         start_time = end;
-        #print("recent start time :",start_time)
+        print("recent start time :",start_time)
 
         # ------------------ HOUR BASED ------------------
         if count_type == 'hour':
@@ -134,74 +134,41 @@ def get_recent_count():
                     hours.append(start.strftime("%H:00"))
                     end =start
 
-        
-                data = [{"time": t, "count": c} for t, c in zip(hours, counts)]
                 
+
+                data = [{"time": t, "count": c} for t, c in zip(hours, counts)]
                 
                    
 
 
         # ------------------ DAY BASED ------------------
         elif count_type == 'day':
-            end = datetime.now(timezone.utc)
-            start = end - timedelta(days=7)
+            for i in range(7):  # last 7 days (you can change)
+                start = end - timedelta(days=1)
 
-            pipeline = [
-                {
-                    "$match": {
-                        "_id": {
-                            "$gte": ObjectId.from_datetime(start),
-                            "$lt": ObjectId.from_datetime(end)
-                        }
+                query = {
+                    "_id": {
+                        "$gte": ObjectId.from_datetime(start),
+                        "$lt": ObjectId.from_datetime(end)
                     }
-                },
-                {
-                    "$project": {
-                        "day": {
-                            "$dateTrunc": {
-                                "date": {"$toDate": "$_id"},
-                                "unit": "day"
-                            }
-                        }
-                    }
-                },
-                {
-                    "$group": {
-                        "_id": "$day",
-                        "count": {"$sum": 1}
-                    }
-                },
-                {
-                    "$sort": {"_id": 1}
                 }
-            ]
-            results = list(collection.aggregate(pipeline))
-            
-            count_by_day = {
-                item["_id"].strftime("%Y-%m-%d"): item["count"]
-                for item in results
-            }
-        
-            time_labels = []
-            num_access = []
-        
-            current = start
-        
-            for _ in range(7):
-                day = current.strftime("%Y-%m-%d")
-        
-                time_labels.append(day)
-                num_access.append(count_by_day.get(day, 0))
-        
-                current += timedelta(days=1)
-            # ------------------ FINAL RESPONSE ------------------
-            data = [{"time": t, "count": c} for t, c in zip(time_labels, num_access)]
-                
+
+                count = collection.count_documents(query)
+
+                time_labels.append(start.strftime("%Y-%m-%d"))
+                num_access.append(count)
+
+                end = start
+
         else:
             return jsonify({"error": "Invalid type. Use 'hour' or 'day'"}), 400
 
-        print("total time :", datetime.now(timezone.utc)-start_time)     
+        # ------------------ FINAL RESPONSE ------------------
+        data = [{"time": t, "count": c} for t, c in zip(time_labels, num_access)]
+
+        print("recent end time :", datetime.now(timezone.utc))
         
+        print("recent time :", datetime.now(timezone.utc) - start_time)
 
         return jsonify({"data": data}), 200
 
