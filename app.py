@@ -83,7 +83,7 @@ def get_top_10():
 # @app.route('/count/recent', methods=['POST'])
 # def post_sun_to_dbt():
 #     pass
-@app.route('/count/recent', methods=['GET'])
+app.route('/count/recent', methods=['GET'])
 def get_recent_count():
     try:
         count_type = request.args.get('type')
@@ -95,7 +95,7 @@ def get_recent_count():
 
         end = datetime.now(timezone.utc)
         start_time = end;
-        print("recent start time :",start_time)
+        #print("recent start time :",start_time)
 
         # ------------------ HOUR BASED ------------------
         if count_type == 'hour':
@@ -136,7 +136,7 @@ def get_recent_count():
 
         
                 data = [{"time": t, "count": c} for t, c in zip(hours, counts)]
-                print("data :", data)
+                
                 
                    
 
@@ -194,21 +194,19 @@ def get_recent_count():
                 num_access.append(count_by_day.get(day, 0))
         
                 current += timedelta(days=1)
+            # ------------------ FINAL RESPONSE ------------------
+            data = [{"time": t, "count": c} for t, c in zip(time_labels, num_access)]
+                
         else:
             return jsonify({"error": "Invalid type. Use 'hour' or 'day'"}), 400
 
-        # ------------------ FINAL RESPONSE ------------------
-        data = [{"time": t, "count": c} for t, c in zip(time_labels, num_access)]
-
-        print("recent end time :", datetime.now(timezone.utc))
+        print("total time :", datetime.now(timezone.utc)-start_time)     
         
-        print("recent time :", datetime.now(timezone.utc) - start_time)
 
         return jsonify({"data": data}), 200
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route('/document/<id>', methods=['GET'])
 def get_document(id):
