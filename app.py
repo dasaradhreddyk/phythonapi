@@ -98,6 +98,8 @@ def read_labels_from_file(labels):
 @app.route('/find_category', methods=['GET','POST'])
 def find_category():
     try:
+          timeout_seconds = 300
+        start_time = time.monotonic()
         classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
 
         labels = []
