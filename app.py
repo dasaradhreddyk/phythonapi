@@ -10,6 +10,7 @@ from flask_cors import CORS, cross_origin
 import webbrowser
 import os
 import requests
+from transformers import pipeline
 
 ENDPOINT = "http://127.0.0.1:5000"
 
@@ -78,7 +79,77 @@ def get_top_10():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def read_labels_from_file(labels):
+    try:
+        if not os.path.exists('labels.txt'):
+            open('labels.txt', 'w', encoding='utf-8').close()
 
+        with open('labels.txt', 'r', encoding='utf-8') as f:
+            labels.clear()
+            for line in f:
+                labels.append(line.strip())
+        print("Labels read from file successfully.")
+    except Exception as e:
+        print(f"Error reading labels from file: {e}")
+
+@app.route('/find_category', methods=['GET','POST'])
+def find_category():
+    try:
+        classifier = pipeline("zero-shot-classification", model="facebook/bart-large-mnli")
+
+        labels = []
+        read_labels_from_file(labels)
+
+        if not labels:
+            return jsonify({"error": "No labels found in labels.txt"}), 400
+
+        processed_count = 0
+
+        for document in reviews_collection.find().sort("captions", -1) :
+            if not document:
+                continue
+
+            description = document.get("captions", "")
+            if description is None:
+                continue
+
+            description_clean = str(description).replace("[", " ") \
+                .replace("]", " ") \
+                .replace("{", " ") \
+                .replace("}", " ") \
+                .replace("'", " ") \
+                .strip()
+
+            if not description_clean:
+                continue
+
+            if document.get("category") is not None:
+                continue
+
+            result = classifier(description_clean, labels, multi_label=True)
+            if not result.get("labels"):
+                continue
+
+            category = result["labels"][0]
+            processed_count += 1
+
+            print("Text:", description_clean)
+            print("Prediction:", category)
+
+            if document.get("category") is None:
+                reviews_collection.update_one(
+                    {"_id": document["_id"]},
+                    {"$set": {"category": category}}
+                )
+
+        return jsonify({
+            "message": "Category processing completed",
+            "processed_count": processed_count
+        }), 200
+    except Exception as e:
+        print("Error occurred:", str(e))
+        return jsonify({"error": str(e)}), 400
+    
 # POST /count/recent is not implemented yet
 # @app.route('/count/recent', methods=['POST'])
 # def post_sun_to_dbt():
