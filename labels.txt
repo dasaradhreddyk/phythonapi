@@ -1,0 +1,14 @@
+Birds
+Animal
+Furniture
+Food
+Vehicle
+Nature
+clothing
+electronics
+sports
+people
+luxury
+trend
+art
+painting
