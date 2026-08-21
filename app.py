@@ -26,6 +26,8 @@ def hello():
 client = MongoClient('mongodb+srv://talashdrive:talashdrive@cluster1.7xzdzgk.mongodb.net/', serverSelectionTimeoutMS=1000)
 db = client['ample_mflix']
 collection = db['playlists']
+reviews_collection = db['reviews']
+
 
 @app.route('/health', methods=['GET'])
 def health_check():
