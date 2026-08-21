@@ -29,6 +29,7 @@ collection = db['playlists']
 reviews_collection = db['reviews']
 
 
+
 @app.route('/health', methods=['GET'])
 def health_check():
     try:
